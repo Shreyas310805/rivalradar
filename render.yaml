@@ -1,0 +1,106 @@
+# Render blueprint for the RivalRadar backend.
+#
+# This file contains NO secrets. Every value marked `sync: false` must be set
+# by hand in the Render dashboard (Environment -> Add Environment Variable);
+# Render will prompt for them when the blueprint is first applied.
+#
+# The frontend is NOT deployed here — it is a static site on GitHub Pages,
+# built by .github/workflows/deploy-frontend.yml.
+
+services:
+  - type: web
+    name: rivalradar-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+
+    # Free instances sleep after inactivity and cold-start on the next
+    # request. /health is cheap and touches the database, so it is a real
+    # readiness signal rather than a static 200.
+    healthCheckPath: /health
+
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+
+    # Migrations run at release time, not on import: the schema is applied
+    # once per deploy rather than by every worker that happens to boot.
+    preDeployCommand: alembic upgrade head
+
+    # Render supplies $PORT and expects the process to bind 0.0.0.0.
+    # One worker: the free plan has 512 MB, and Playwright/LangGraph imports
+    # are not cheap to duplicate.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+
+      # Demo data is fictional. It must never appear in a public deployment.
+      - key: DEMO_MODE
+        value: "false"
+
+      # --- Secrets: set these in the Render dashboard --------------------
+      # Supabase connection string, e.g.
+      #   postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+      - key: DATABASE_URL
+        sync: false
+      # OpenRouter key. Backend only — it is never sent to the browser.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      # Comma-separated GitHub Pages origin(s), e.g.
+      #   https://<username>.github.io
+      - key: CORS_ORIGINS
+        sync: false
+
+      # --- LLM -----------------------------------------------------------
+      - key: LLM_PROVIDER
+        value: openrouter
+      # A pinned free model. "openrouter/free" is a router that picks a
+      # different model per request and can land on one that cannot do this
+      # task at all, so it is deliberately not used.
+      - key: OPENROUTER_MODEL
+        value: deepseek/deepseek-v4-flash-0731:free
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: LLM_MAX_TOKENS
+        value: "2000"
+      - key: LLM_MAX_CALLS_PER_SCAN
+        value: "8"
+      - key: LLM_MIN_RELEVANCE
+        value: "40"
+
+      # --- Scraping ------------------------------------------------------
+      - key: SCAN_USER_AGENT
+        value: RivalRadar/1.0 (+https://github.com/rivalradar; competitive-intelligence bot)
+      - key: REQUEST_TIMEOUT_SECONDS
+        value: "20"
+      - key: REQUEST_MAX_RETRIES
+        value: "3"
+      - key: REQUEST_DELAY_SECONDS
+        value: "1.5"
+      - key: RESPECT_ROBOTS_TXT
+        value: "true"
+      # SSRF guard. Never enable this on a public deployment: the service
+      # fetches user-supplied URLs, and Render's metadata endpoint and
+      # internal network sit on private addresses.
+      - key: ALLOW_PRIVATE_NETWORKS
+        value: "false"
+      # Chromium is not installed in the build, so JS rendering stays off.
+      # See DEPLOYMENT.md before changing this.
+      - key: PLAYWRIGHT_ENABLED
+        value: "false"
+
+      # --- Scheduler -----------------------------------------------------
+      # Off for the first deployment. A free instance sleeps after ~15
+      # minutes of inactivity, so a background scheduler would run only when
+      # somebody happened to be using the site — which is not monitoring,
+      # and the UI would be claiming something untrue. Scans are manual.
+      - key: SCHEDULER_ENABLED
+        value: "false"

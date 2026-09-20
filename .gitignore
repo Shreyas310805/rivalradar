@@ -1,0 +1,53 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Secrets ---
+# Every .env variant is ignored, then .env.example is force-included: it is
+# the committed template and contains no real values.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+# Never commit a real connection string or key by another name.
+secrets.json
+.envrc
+
+# --- Database ---
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# --- Generated data ---
+# Snapshots and reports are produced by running the app, not committed.
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
+
+# --- Alembic scratch ---
+# CI writes a throwaway SQLite database when it round-trips the migrations.
+ci-migration-check.db
+
+# --- Node / Next ---
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

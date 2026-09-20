@@ -1,0 +1,98 @@
+name: Deploy frontend to GitHub Pages
+
+# Only the frontend is deployed here. The FastAPI backend runs on Render and
+# is deployed from render.yaml — GitHub Pages serves static files and cannot
+# run a Python process.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:
+
+# Allow the workflow to publish to Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time. Queued runs wait rather than racing; an
+# in-progress deploy is never cancelled half-way.
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve GitHub Pages base path
+        id: pages-config
+        run: |
+          repo="${GITHUB_REPOSITORY#*/}"
+          owner_lower=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          repo_lower=$(echo "$repo" | tr '[:upper:]' '[:lower:]')
+          # A user/organisation site (<owner>.github.io) is served from the
+          # domain root and must have no base path. Every other repository is
+          # a project site served from /<repo>/.
+          if [ "$repo_lower" = "${owner_lower}.github.io" ]; then
+            echo "base_path=" >> "$GITHUB_OUTPUT"
+          else
+            echo "base_path=/$repo" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the backend URL is configured
+        run: |
+          if [ -z "${{ vars.NEXT_PUBLIC_API_URL }}" ]; then
+            echo "::error::Repository variable NEXT_PUBLIC_API_URL is not set."
+            echo "Set it under Settings -> Secrets and variables -> Actions -> Variables"
+            echo "to your Render backend URL, e.g. https://rivalradar-api.onrender.com"
+            exit 1
+          fi
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build static site
+        env:
+          # A repository VARIABLE, not a secret: this URL is public by nature
+          # (it ends up in the JavaScript bundle) and secrets are masked in
+          # logs, which makes build failures much harder to read.
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages-config.outputs.base_path }}
+        run: npm run build:static
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

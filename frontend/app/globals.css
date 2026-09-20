@@ -1,0 +1,516 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+   RivalRadar design system
+
+   A research instrument, not a dashboard. The design is carried by type,
+   spacing and alignment; borders separate content rather than decorate it.
+
+   Rules this file enforces:
+     - one warm off-white canvas, one hairline, one restrained blue
+     - three font weights (400 body, 500 labels, 600 headings)
+     - small radii (3-4px on controls, 8px on floating surfaces only)
+     - colour carries meaning only (severity, diff, error)
+     - motion is opacity and transform, never colour or layout, so light and
+       dark run identical code and the compositor does the work
+   =========================================================================== */
+
+@theme {
+  /* Geist is self-hosted by next/font in layout.tsx, which sets these two
+     variables on <html>. The stack below is the fallback chain. */
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-lg: 8px;
+
+  /* --- Motion -------------------------------------------------------------
+     These mirror lib/motion.ts exactly. One curve, five durations; no
+     component invents its own. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 150ms;
+  --dur: 220ms;
+  --dur-slow: 400ms;
+  --dur-reveal: 500ms;
+  --dur-overlay: 300ms;
+}
+
+/* --- Light: warm, quiet, editorial ---------------------------------------- */
+:root {
+  color-scheme: light;
+
+  --shell: #f6f6f4;
+  --canvas: #fafaf9;
+  --panel: #ffffff;
+  --raised: #f1f1ef;
+  --overlay: rgb(23 23 26 / 0.2);
+
+  --line: #e7e7e5;
+  --line-strong: #d7d7d3;
+
+  --ink: #18181a;
+  --ink-soft: #55555d;
+  --ink-faint: #696973;
+
+  --accent: #1f4ec4;
+  --accent-hover: #1a42a8;
+  --accent-soft: #f0f3fc;
+  --accent-line: #d3ddf5;
+
+  /* Severity: muted. Colour marks the indicator, never the whole row. */
+  --critical: #ab2f2a;
+  --critical-soft: #fcf2f1;
+  --critical-line: #eed2d0;
+  --high: #8e5a0d;
+  --high-soft: #fcf6ec;
+  --high-line: #e9dabd;
+  --medium: #1f4ec4;
+  --medium-soft: #f0f3fc;
+  --medium-line: #d3ddf5;
+  --low: #2f6b51;
+  --low-soft: #f0f5f2;
+  --low-line: #cfe0d7;
+  --neutral: #7c7c85;
+  --neutral-soft: #f2f2f0;
+  --neutral-line: #e4e4e1;
+
+  /* Category marks for charts. Desaturated to near-neutral so a category
+     chart reads as one family; only pricing borrows the accent. */
+  --cat-pricing: #1f4ec4;
+  --cat-features: #46735e;
+  --cat-product: #4a6885;
+  --cat-hiring: #856439;
+  --cat-integrations: #3d6d75;
+  --cat-messaging: #76674f;
+
+  --diff-add-bg: #e9f2ec;
+  --diff-add-ink: #1e5740;
+  --diff-del-bg: #fbeeed;
+  --diff-del-ink: #8c2823;
+
+  --shadow-sm: 0 1px 2px rgb(20 20 24 / 0.04);
+  --shadow-md: 0 4px 14px rgb(20 20 24 / 0.07);
+  --shadow-lg: 0 12px 40px rgb(20 20 24 / 0.13);
+}
+
+/* --- Dark: deep neutral charcoal, never black ----------------------------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --shell: #101010;
+  --canvas: #141414;
+  --panel: #1a1a1a;
+  --raised: #222222;
+  --overlay: rgb(0 0 0 / 0.5);
+
+  --line: #282828;
+  --line-strong: #383838;
+
+  --ink: #ededed;
+  --ink-soft: #a3a3a3;
+  --ink-faint: #8d8d8d;
+
+  /* Lifted and desaturated: readable on charcoal, nowhere near neon. */
+  --accent: #84a0dc;
+  --accent-hover: #9ab2e6;
+  --accent-soft: #1a1f2a;
+  --accent-line: #2b3240;
+
+  --critical: #df8a85;
+  --critical-soft: #2a1b1b;
+  --critical-line: #422828;
+  --high: #cfa066;
+  --high-soft: #272016;
+  --high-line: #41341e;
+  --medium: #84a0dc;
+  --medium-soft: #1a1f2a;
+  --medium-line: #2b3240;
+  --low: #6cba98;
+  --low-soft: #15241d;
+  --low-line: #223a30;
+  --neutral: #858585;
+  --neutral-soft: #222222;
+  --neutral-line: #2f2f2f;
+
+  --cat-pricing: #84a0dc;
+  --cat-features: #6fae90;
+  --cat-product: #7e9cba;
+  --cat-hiring: #c19a63;
+  --cat-integrations: #6aa5ad;
+  --cat-messaging: #ab9877;
+
+  --diff-add-bg: #16261d;
+  --diff-add-ink: #82ceaa;
+  --diff-del-bg: #2a1919;
+  --diff-del-ink: #e79a96;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 14px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 16px 48px rgb(0 0 0 / 0.55);
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.55;
+  }
+
+  /* Headings are 600 and never larger than they need to be. Optical tracking
+     tightens as size grows, so a 30px metric and a 13px label feel related. */
+  h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.022em; line-height: 1.28; }
+  h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.013em; line-height: 1.4; }
+  h3 { font-size: 13.5px; font-weight: 600; letter-spacing: -0.008em; }
+
+  ::selection {
+    background-color: var(--accent-soft);
+    color: var(--ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--line-strong);
+    border-radius: 99px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--ink-faint); }
+}
+
+/* ---------------------------------------------------------------------------
+   Theme transition
+
+   Applied to <html> only for the length of a switch and then removed, so the
+   page cross-fades instead of snapping — and so this blunt `*` rule is not
+   competing with every hover transition for the rest of the session.
+   --------------------------------------------------------------------------- */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition:
+    background-color 240ms var(--ease),
+    border-color 240ms var(--ease),
+    color 240ms var(--ease),
+    fill 240ms var(--ease),
+    box-shadow 240ms var(--ease) !important;
+  transition-delay: 0s !important;
+}
+
+@layer components {
+  /* --- Surfaces ---------------------------------------------------------
+     Reserved for things that genuinely float: drawers and dialogs. Ordinary
+     sections use whitespace and a hairline instead. */
+  .surface {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+  }
+
+  /* --- Typography --------------------------------------------------------
+     `.eyebrow` is the only uppercase in the system, used sparingly: major
+     section headings and day dividers. Everything else is sentence case. */
+  .eyebrow {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .field-label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink-soft);
+  }
+
+  .metric {
+    font-size: 30px;
+    line-height: 1.08;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: -0.005em;
+  }
+
+  /* --- Diff --------------------------------------------------------------
+     Tinted text, not a highlighter pen: the change should read as part of
+     the sentence it sits in. */
+  .diff-add {
+    background-color: var(--diff-add-bg);
+    color: var(--diff-add-ink);
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+  .diff-del {
+    background-color: var(--diff-del-bg);
+    color: var(--diff-del-ink);
+    border-radius: 2px;
+    padding: 0 2px;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in srgb, var(--diff-del-ink) 40%, transparent);
+  }
+
+  /* --- Controls --------------------------------------------------------- */
+  .input {
+    width: 100%;
+    background-color: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    padding: 6px 9px;
+    font-size: 13px;
+    outline: none;
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      box-shadow var(--dur-fast) var(--ease);
+  }
+  .input::placeholder { color: var(--ink-faint); }
+  .input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+
+  /* --- Skeletons -------------------------------------------------------- */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--raised);
+    border-radius: var(--radius-xs);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--panel) 60%, transparent),
+      transparent
+    );
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+@layer utilities {
+  /* --- Scroll entrance ---------------------------------------------------
+     A section settles in: it rises 18px and resolves from 98.5% scale. The
+     scale is small enough to read as depth rather than as a zoom. */
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+    transition:
+      opacity var(--dur-reveal) var(--ease),
+      transform var(--dur-reveal) var(--ease);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .reveal[data-shown="true"] {
+    opacity: 1;
+    /* `none`, not scale(1): a resolved transform must not leave behind a
+       containing block for fixed-position descendants. */
+    transform: none;
+  }
+
+  /* A section the reader has scrolled up past steps back, so the one they
+     have arrived at is the subject. Deliberately slight. */
+  .reveal[data-receded="true"] {
+    opacity: 0.55;
+    transition: opacity var(--dur-slow) var(--ease);
+  }
+
+  /* Rows travel less than the section containing them, or the two read as
+     competing animations. */
+  .js .reveal-item {
+    opacity: 0;
+    transform: translateY(10px);
+    transition:
+      opacity var(--dur-slow) var(--ease),
+      transform var(--dur-slow) var(--ease);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .reveal-item[data-shown="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* --- Activity rows -----------------------------------------------------
+     A row unfolds in three grouped stages rather than five separate lines:
+     when, then what, then how much it matters. Each row owns one observer
+     and the stages are pure CSS off its `data-row-shown`, so a hundred rows
+     cost a hundred observers, not three hundred. */
+  .js .row-stage {
+    opacity: 0;
+    transform: translateY(6px);
+    transition:
+      opacity var(--dur-slow) var(--ease),
+      transform var(--dur-slow) var(--ease);
+    transition-delay: calc(var(--reveal-delay, 0ms) + var(--stage, 0ms));
+  }
+  [data-row-shown="true"] .row-stage {
+    opacity: 1;
+    transform: none;
+  }
+
+  .activity-row {
+    transition:
+      background-color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+  .activity-row:hover {
+    background-color: var(--raised);
+    border-bottom-color: var(--line-strong);
+  }
+  /* A tiny mark that slides in on hover. The row itself never moves — a list
+     where every row shifts under the pointer is a list you cannot read. */
+  .row-mark {
+    opacity: 0;
+    transform: translateX(-3px);
+    transition:
+      opacity var(--dur-fast) var(--ease),
+      transform var(--dur-fast) var(--ease);
+  }
+  .activity-row:hover .row-mark,
+  .activity-row:focus-visible .row-mark {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* --- Competitor rows ---------------------------------------------------
+     Hover firms the row up rather than lifting it: the background warms, the
+     separator gains contrast, and the domain steps forward from faint to
+     secondary. Nothing moves. */
+  .competitor-row {
+    transition:
+      background-color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+  .competitor-row:hover {
+    background-color: var(--raised);
+    border-bottom-color: var(--line-strong);
+  }
+  .competitor-row .host {
+    transition: color var(--dur-fast) var(--ease);
+  }
+  .competitor-row:hover .host {
+    color: var(--ink-soft);
+  }
+
+  /* --- Data marks --------------------------------------------------------
+     Bars and meters draw themselves when their section arrives. Drawn is the
+     default state and only an unrevealed ancestor collapses them, so a bar
+     that is not inside a Reveal still renders at full length. */
+  .bar-fill {
+    transform-origin: left;
+    transition: transform var(--dur-reveal) var(--ease);
+    transition-delay: var(--bar-delay, 0ms);
+  }
+  [data-shown="false"] .bar-fill {
+    transform: scaleX(0);
+  }
+
+  /* --- Slide-overs -------------------------------------------------------
+     Enter and exit are the same transition run in both directions, so a
+     drawer never vanishes: `--slide-from` sets which edge it comes from. */
+  .js .slide-panel {
+    opacity: 0;
+    transform: translateX(var(--slide-from, 24px));
+    transition:
+      opacity var(--dur-overlay) var(--ease),
+      transform var(--dur-overlay) var(--ease);
+  }
+  .slide-panel[data-open="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .js .scrim {
+    opacity: 0;
+    transition: opacity var(--dur-overlay) var(--ease);
+  }
+  .scrim[data-open="true"] { opacity: 1; }
+
+  /* --- Page transition ---------------------------------------------------
+     Near-instant. A route change should feel like the content was already
+     there, not like a slide deck advancing.
+
+     Deliberately no `fill-mode`. With `both` the element holds the `from`
+     keyframe — opacity 0 — whenever the animation has not started, which in a
+     backgrounded or throttled renderer means the whole page stays blank.
+     Without fill, the resting state is the visible one and the animation is
+     pure decoration on top of it. */
+  .animate-page { animation: page-in var(--dur) var(--ease); }
+  .animate-rise { animation: rise var(--dur) var(--ease); }
+}
+
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion
+
+   Mandatory, and complete: scroll entrances, stagger, count-ups, bar draws
+   and slide-overs all collapse to instant state changes. Nothing is hidden as
+   a side effect — every animated element resolves to its final state.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The hover mark is deliberately not listed here: it should still be a
+     hover affordance, it just appears instantly. */
+  .reveal,
+  .reveal-item,
+  .row-stage {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .reveal[data-receded="true"] { opacity: 1 !important; }
+  [data-shown="false"] .bar-fill { transform: none !important; }
+}

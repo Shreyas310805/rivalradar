@@ -1,0 +1,82 @@
+name: CI
+
+# Runs the checks that must pass before a deploy is worth attempting:
+# the backend test suite, the lint rules, a real migration round-trip, and a
+# production build of the frontend.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check app tests
+
+      - name: Tests
+        run: pytest -q -p no:warnings
+
+      - name: Migrations apply and reverse cleanly
+        env:
+          DATABASE_URL: sqlite:///./ci-migration-check.db
+        run: |
+          alembic upgrade head
+          alembic check          # the models and the migrations agree
+          alembic downgrade base # every table drops in the right order
+          alembic upgrade head
+
+      - name: PostgreSQL DDL compiles
+        env:
+          # Never connected to — offline mode only renders the SQL, which is
+          # enough to catch dialect-specific breakage without a live server.
+          DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
+        run: alembic upgrade head --sql > /dev/null
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Static export builds
+        env:
+          NEXT_PUBLIC_API_URL: https://example.invalid
+        run: npm run build:static
