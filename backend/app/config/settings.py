@@ -188,7 +188,15 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        """Allowed origins, normalised to the form browsers actually send.
+
+        The CORS match is an exact string comparison, and browsers always
+        send the Origin header lowercase with no trailing slash. So
+        "https://Shreyas310805.github.io/" — a natural way to type a GitHub
+        username — would otherwise block every request from the real site.
+        """
+        origins = (origin.strip().rstrip("/").lower() for origin in self.cors_origins.split(","))
+        return [origin for origin in origins if origin]
 
     def ensure_directories(self) -> None:
         """Create the on-disk data directories if they do not exist yet."""

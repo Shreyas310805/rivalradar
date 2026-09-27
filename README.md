@@ -333,14 +333,13 @@ RivalRadar works with no API key at all. To turn on LLM analysis:
 | 2 | `nvidia/nemotron-3.5-content-safety:free` | **unusable** — a content-safety classifier; answered a pricing prompt with `"User Safety: safe"` |
 | 3 | `deepseek/deepseek-v4-flash-0731:free` | usable |
 
-Pin a specific free instruct model instead. Verified working for this task:
+Pin a specific free instruct model instead. Verified working for this task (2026-09-27, the app's real analysis prompt, schema-valid JSON on every run):
 
 ```
-OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731:free   # default
-OPENROUTER_MODEL=nex-agi/nex-n2.5-pro:free              # alternative
+OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free   # default
 ```
 
-Free model availability changes over time. Browse [openrouter.ai/models?max_price=0](https://openrouter.ai/models?max_price=0) and **always confirm with `rivalradar llm-check`** rather than assuming a slug works.
+Free model availability changes without notice — the previous default, `deepseek/deepseek-v4-flash-0731:free`, became paid-only, and the former alternative `nex-agi/nex-n2.5-pro:free` was withdrawn. Browse [openrouter.ai/models?max_price=0](https://openrouter.ai/models?max_price=0) and **always confirm with `rivalradar llm-check`** rather than assuming a slug works.
 
 The provider still handles the router safely if you choose it: an empty completion is retried (a retry re-routes), and JSON is salvaged from a model's `reasoning` field when it leaves `content` empty.
 

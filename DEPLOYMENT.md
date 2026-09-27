@@ -285,7 +285,7 @@ a change appears with a real analysis attached.
 | `DEBUG`              | yes      | `false`                                             |
 | `DEMO_MODE`          | yes      | `false`                                             |
 | `LLM_PROVIDER`       | yes      | `openrouter`                                        |
-| `OPENROUTER_MODEL`   | yes      | `deepseek/deepseek-v4-flash-0731:free`              |
+| `OPENROUTER_MODEL`   | yes      | `nvidia/nemotron-3-super-120b-a12b:free`            |
 | `SCHEDULER_ENABLED`  | yes      | `false` — see below                                 |
 | `PLAYWRIGHT_ENABLED` | yes      | `false` — see below                                 |
 

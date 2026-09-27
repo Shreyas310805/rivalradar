@@ -78,7 +78,7 @@ services:
       # different model per request and can land on one that cannot do this
       # task at all, so it is deliberately not used.
       - key: OPENROUTER_MODEL
-        value: deepseek/deepseek-v4-flash-0731:free
+        value: nvidia/nemotron-3-super-120b-a12b:free
       - key: OPENROUTER_BASE_URL
         value: https://openrouter.ai/api/v1
       - key: LLM_MAX_TOKENS
