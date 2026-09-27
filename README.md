@@ -416,7 +416,8 @@ frontend to OpenRouter, and no `NEXT_PUBLIC_*` variable carries a credential.
 3. Set it as `DATABASE_URL` on Render.
 4. Create the Render web service from `render.yaml` (free plan), supplying
    `DATABASE_URL`, `OPENROUTER_API_KEY` and `CORS_ORIGINS`.
-5. Deploy. The pre-deploy step runs `alembic upgrade head` against Supabase.
+5. Deploy. The start command runs `alembic upgrade head` against Supabase
+   before uvicorn starts (Render's free plan has no pre-deploy step).
 6. Copy the Render URL.
 7. Set it as the repository variable `NEXT_PUBLIC_API_URL`.
 8. Settings → Pages → Source: **GitHub Actions**.

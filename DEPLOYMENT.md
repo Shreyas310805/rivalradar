@@ -81,30 +81,41 @@ values.
 
 ## 2. Supabase — PostgreSQL
 
-1. Sign in at <https://supabase.com> → **New project**.
-2. Name it `rivalradar`, choose a region near your Render region, and set a
-   strong database password. **Copy the password now** — Supabase does not
-   show it again.
-3. Wait for provisioning (~2 minutes).
-4. Go to **Project Settings → Database → Connection string → URI**.
-5. Choose the **Session pooler** (or Transaction pooler) entry, port `6543`,
-   not the direct connection on `5432`.
+1. Sign in at <https://supabase.com> → **New project** (Free plan).
+2. Name it `rivalradar`. For the database password use **letters and numbers
+   only**. Symbols such as `@ : / ? # %` have to be percent-encoded inside a
+   URL, and getting that wrong is the most common cause of "password
+   authentication failed". **Save the password in a password manager now** —
+   Supabase does not show it again.
+3. Region: **Southeast Asia (Singapore)** — the same region as the Render
+   service (`region: singapore` in `render.yaml`).
+4. Wait for provisioning (~2 minutes).
+5. Click **Connect** at the top of the project page → **Connection String** →
+   Method: **Session pooler**. Copy the URI. It ends in
+   `.pooler.supabase.com:5432/postgres`.
 
-   Free Render instances get a new outbound IP on every restart, and the
-   pooler copes with that better than the direct host. The app already
-   disables client-side prepared statements so the pooler's transaction mode
-   works correctly.
+   Use the Session pooler, not:
 
-6. Copy the URI and replace `[YOUR-PASSWORD]` with the password from step 2:
+   - **Direct connection** — that host is IPv6-only, and Render's outbound
+     network is IPv4-only, so it can never connect from Render.
+   - **Transaction pooler** (port `6543`) — built for short-lived serverless
+     functions. A long-running server like this one belongs on the session
+     pooler, which also speaks IPv4.
+
+6. Replace `[YOUR-PASSWORD]` — brackets included — with your password, and
+   add `?sslmode=require` to the end so the connection can never fall back to
+   plaintext:
 
    ```
-   postgresql://postgres.abcdefghijkl:YOUR_PASSWORD@aws-0-eu-west-1.pooler.supabase.com:6543/postgres
+   postgresql://postgres.abcdefghijkl:YOUR_PASSWORD@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
    ```
 
-   If the password contains `@ : / ? # [ ] %`, percent-encode it
-   (`@` → `%40`, `#` → `%23`, and so on) or the URL will not parse.
+   The user is `postgres.<project-ref>`, not plain `postgres`: the pooler
+   uses the suffix to find your project.
 
-You do **not** need to create any tables. Alembic does that on first deploy.
+You do **not** need to create any tables by hand. Alembic creates them —
+either when Render starts, or beforehand from your own machine with
+`scripts/check_database.py` (see [Database migrations](#database-migrations)).
 
 ---
 
@@ -123,8 +134,14 @@ You do **not** need to create any tables. Alembic does that on first deploy.
    | `OPENROUTER_API_KEY` | your key from <https://openrouter.ai/keys>                |
    | `CORS_ORIGINS`       | `http://localhost:3000` for now — corrected in step 6     |
 
-4. **Apply**. The first build installs dependencies, runs
-   `alembic upgrade head` against Supabase, and starts uvicorn.
+4. **Apply**. The build installs dependencies. Then the start command runs
+   `alembic upgrade head` against Supabase and, only if that succeeds, starts
+   uvicorn.
+
+   There is no pre-deploy command: Render offers `preDeployCommand` only on
+   paid plans and rejects a free blueprint that declares one. On a database
+   that is already up to date the upgrade does nothing and takes about a
+   second per cold start.
 
 ### Option B — manual service
 
@@ -132,9 +149,10 @@ New → Web Service → connect the repo, then:
 
 - **Root directory:** `backend`
 - **Runtime:** Python 3
+- **Region:** Singapore (it cannot be changed after creation)
 - **Build command:** `pip install --upgrade pip && pip install -r requirements.txt`
-- **Pre-deploy command:** `alembic upgrade head`
-- **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`
+- **Pre-deploy command:** leave empty — not available on the free plan
+- **Start command:** `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`
 - **Health check path:** `/health`
 - **Plan:** Free
 
@@ -293,10 +311,14 @@ leave `alembic_version` empty, after which every later migration either fails
 or silently skips. The app refuses to start against an unmigrated production
 database and says so.
 
+On Render the migration runs at the start of every boot, as part of the start
+command (the free plan has no pre-deploy step). It is a no-op once the
+database is current.
+
 ```bash
 cd backend
 
-# Apply everything (Render does this automatically on deploy)
+# Apply everything (Render does this itself every time the service starts)
 alembic upgrade head
 
 # Roll back one revision
@@ -310,12 +332,25 @@ alembic revision --autogenerate -m "describe the change"
 alembic check          # confirms models and migrations agree
 ```
 
-To run a migration against production from your machine, set `DATABASE_URL`
-to the Supabase URI for that command only:
+To migrate and verify the Supabase database from your own machine — before
+Render exists, or at any time after — run the check script from the
+repository root:
 
-```bash
-DATABASE_URL="postgresql://..." alembic upgrade head
+```powershell
+.\backend\.venv\Scripts\python.exe .\scripts\check_database.py
 ```
+
+It asks for the connection string at a hidden prompt, so the password never
+lands in your shell history, and it never prints the password or the full
+URL. It validates the URL, runs `alembic upgrade head` and `alembic check`,
+boots the app's own database layer in production mode, and reports SSL, the
+schema revision, the tables, and whether Supabase's public `anon` role can
+read them.
+
+Do **not** put the Supabase URL in `backend/.env`. The local dev server runs
+in development mode, where the schema is created with `create_all()` rather
+than through Alembic — pointed at Supabase, that would bypass the migration
+history.
 
 Locally, with no `DATABASE_URL`, everything targets `backend/rivalradar.db`.
 
@@ -375,8 +410,10 @@ every restart — data loss that looks like a healthy service.
 
 **`The production database has no schema.`**
 
-`alembic upgrade head` has not run. Check the pre-deploy command, or run it
-locally against the Supabase URL.
+`alembic upgrade head` has not run. On Render, check that the start command
+begins with `alembic upgrade head &&` — the free plan has no pre-deploy step,
+so without it nothing creates the schema. Or migrate from your own machine
+with `scripts/check_database.py`, then redeploy.
 
 **`prepared statement "_pg3_0" does not exist`**
 

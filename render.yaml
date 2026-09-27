@@ -12,7 +12,10 @@ services:
     name: rivalradar-api
     runtime: python
     plan: free
-    region: oregon
+    # Render cannot move a service between regions after creation. Singapore
+    # sits next to the Supabase project (ap-southeast-1), so every query is a
+    # short hop rather than a Pacific crossing.
+    region: singapore
     rootDir: backend
 
     # Free instances sleep after inactivity and cold-start on the next
@@ -22,14 +25,21 @@ services:
 
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
 
-    # Migrations run at release time, not on import: the schema is applied
-    # once per deploy rather than by every worker that happens to boot.
-    preDeployCommand: alembic upgrade head
-
+    # The migration runs as part of the start command because Render only
+    # offers preDeployCommand on paid plans — a free blueprint that declares
+    # one is rejected outright. Without it the app refuses to boot ("The
+    # production database has no schema"), so it has to run somewhere.
+    #
+    # On an up-to-date database `alembic upgrade head` finds nothing to do and
+    # returns in about a second, so it costs that much per cold start. If it
+    # fails, `&&` stops uvicorn from starting at all and the deploy is marked
+    # failed — better than serving requests against a half-migrated schema.
+    #
     # Render supplies $PORT and expects the process to bind 0.0.0.0.
-    # One worker: the free plan has 512 MB, and Playwright/LangGraph imports
-    # are not cheap to duplicate.
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    # One worker: the free plan has 512 MB, and LangGraph imports are not
+    # cheap to duplicate. A single worker also means a single migrator, so
+    # there is no race between processes applying the same revision.
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
 
     envVars:
       - key: PYTHON_VERSION
@@ -47,8 +57,10 @@ services:
         value: "false"
 
       # --- Secrets: set these in the Render dashboard --------------------
-      # Supabase connection string, e.g.
-      #   postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+      # Supabase SESSION POOLER connection string (port 5432), e.g.
+      #   postgresql://postgres.<ref>:<password>@aws-<n>-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
+      # Not the direct host (IPv6-only; Render is IPv4-only) and not the
+      # transaction pooler on 6543.
       - key: DATABASE_URL
         sync: false
       # OpenRouter key. Backend only — it is never sent to the browser.
@@ -78,7 +90,7 @@ services:
 
       # --- Scraping ------------------------------------------------------
       - key: SCAN_USER_AGENT
-        value: RivalRadar/1.0 (+https://github.com/rivalradar; competitive-intelligence bot)
+        value: RivalRadar/1.0 (+https://github.com/Shreyas310805/rivalradar; competitive-intelligence bot)
       - key: REQUEST_TIMEOUT_SECONDS
         value: "20"
       - key: REQUEST_MAX_RETRIES

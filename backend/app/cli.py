@@ -68,11 +68,19 @@ def main(verbose: bool = typer.Option(False, "--verbose", "-v", help="verbose lo
 @app.command("init")
 def init_command() -> None:
     """Create the database schema."""
+    from sqlalchemy.engine import make_url
+
     from app.database.session import init_db
 
     settings.ensure_directories()
     init_db()
-    console.print(f"[green]Database ready[/green] at {settings.database_url}")
+    # Never print the URL itself: a PostgreSQL URL carries the username and
+    # password. A SQLite URL holds only a local file path, which is worth showing.
+    if settings.database_backend == "sqlite":
+        location = make_url(settings.database_url).database or ":memory:"
+        console.print(f"[green]Database ready[/green] at {location}")
+    else:
+        console.print(f"[green]Database ready[/green] ({settings.database_backend})")
 
 
 @app.command("reset")
