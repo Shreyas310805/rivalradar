@@ -19,6 +19,7 @@ from app.intelligence.classifier import classify_changes
 from app.intelligence.relevance import score_changes
 from app.llm.factory import get_provider
 from app.models.entities import Severity
+from app.redaction import summarise_error
 from app.schemas.llm import ChangeAnalysis
 
 logger = get_logger(__name__)
@@ -235,7 +236,9 @@ def llm_analysis(state: dict) -> dict:
             "analyses": [],
             "llm_calls": 0,
             "llm_status": "failed",
-            "errors": [f"llm_analysis: {exc}"],
+            # Type and status only: the message of an LLM-call failure can
+            # quote the request's Authorization header.
+            "errors": [f"llm_analysis: {summarise_error(exc)}"],
         }
 
     analyses = [

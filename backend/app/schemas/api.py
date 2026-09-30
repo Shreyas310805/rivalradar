@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
 
 from app.models.entities import TrackingFrequency
+from app.redaction import redact_secrets
 from app.scrapers.url_guard import UnsafeURLError, validate_url
 
 _ORM = ConfigDict(from_attributes=True)
+
+# Error text that may have come from an exception. Redacted when serialised,
+# so rows written before the redaction fix cannot leak a credential either.
+RedactedStr = Annotated[str, PlainSerializer(redact_secrets, return_type=str)]
 
 
 def _validate_public_url(value: str) -> str:
@@ -65,7 +71,7 @@ class TrackedURLRead(BaseModel):
     active: bool = True
     last_checked: datetime | None = None
     last_status: str | None = None
-    last_error: str | None = None
+    last_error: RedactedStr | None = None
     created_at: datetime
 
 
@@ -150,9 +156,9 @@ class IntelligenceRead(BaseModel):
     severity: str
     confidence: float
     analysed_by: str
-    # What actually produced this record.
+    # What actually produced this record. The stored llm_error is deliberately
+    # not exposed: the UI needs only the status, and error text is diagnostics.
     llm_status: str = "skipped"
-    llm_error: str | None = None
     llm_model: str | None = None
     # Traceability: the exact evidence behind the record.
     tracked_url_id: int | None = None
@@ -230,7 +236,7 @@ class ScanURLResult(BaseModel):
 
     url: str
     status: str
-    message: str | None = None
+    message: RedactedStr | None = None
     stats: ScanStats = Field(default_factory=ScanStats)
 
 
@@ -248,7 +254,7 @@ class ScanResponse(BaseModel):
     stats: ScanStats = Field(default_factory=ScanStats)
     results: list[ScanURLResult] = Field(default_factory=list)
     intelligence: list[IntelligenceRead] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
+    errors: list[RedactedStr] = Field(default_factory=list)
 
 
 class ScanRunRead(BaseModel):
@@ -266,7 +272,7 @@ class ScanRunRead(BaseModel):
     meaningful_changes: int
     high_impact_changes: int
     noise_reduction: float
-    error: str | None = None
+    error: RedactedStr | None = None
 
 
 # --- Digest -----------------------------------------------------------------
@@ -331,7 +337,7 @@ class EvaluationRead(BaseModel):
     category_breakdown: str
     report_path: str | None = None
     status: str
-    error: str | None = None
+    error: RedactedStr | None = None
     created_at: datetime
 
 

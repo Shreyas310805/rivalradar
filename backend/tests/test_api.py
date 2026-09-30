@@ -234,6 +234,51 @@ class TestIntelligenceRoutes:
             assert 0 <= item["confidence"] <= 1
             assert item["competitor_name"]
 
+    def test_no_credential_or_llm_error_in_responses(self, client, engine, seeded):
+        """Rows written before the redaction fix must not leak through the API."""
+        from sqlalchemy import select
+
+        from app.models.entities import Intelligence, ScanRun, TrackedURL
+
+        fake_key = "sk-" + "or-v1-" + "0123456789abcdef" * 4
+        leaked = f"Illegal header value b'Bearer {fake_key}\\n'"
+        factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+        with factory() as session:
+            for intel in session.scalars(select(Intelligence)):
+                intel.llm_status, intel.llm_error = "failed", leaked
+            for tracked in session.scalars(select(TrackedURL)):
+                tracked.last_error = leaked
+            session.add(ScanRun(competitor_id=seeded, status="failed", error=leaked))
+            session.commit()
+
+        change_id = client.get("/api/changes").json()[0]["id"]
+        intel_id = client.get("/api/intelligence").json()[0]["id"]
+        for path in (
+            "/api/changes",
+            f"/api/changes/{change_id}",
+            "/api/intelligence",
+            f"/api/intelligence/{intel_id}",
+            "/api/competitors",
+            f"/api/competitors/{seeded}",
+            f"/api/competitors/{seeded}/urls",
+            f"/api/competitors/{seeded}/scans",
+        ):
+            response = client.get(path)
+            assert response.status_code == 200, path
+            assert "sk-or" not in response.text, path
+            assert "llm_error" not in response.text, path
+
+        # The other error fields stay visible, just redacted.
+        assert "[redacted]" in client.get(f"/api/competitors/{seeded}/scans").text
+        assert "[redacted]" in client.get(f"/api/competitors/{seeded}/urls").text
+
+    def test_error_bodies_are_redacted(self):
+        from app.api.errors import _json
+
+        fake_key = "sk-" + "or-v1-" + "0123456789abcdef" * 4
+        response = _json(502, f"upstream said Bearer {fake_key}", "upstream_error")
+        assert b"sk-or" not in response.body
+
     def test_stats_funnel_is_consistent(self, client, seeded):
         stats = client.get("/api/stats").json()
         assert stats["raw_changes"] == stats["noise_changes"] + stats["meaningful_changes"]

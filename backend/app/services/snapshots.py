@@ -18,6 +18,7 @@ from app.config.logging import get_logger
 from app.config.settings import settings
 from app.database.base import utcnow
 from app.models.entities import Snapshot, TrackedURL
+from app.redaction import redact_secrets
 from app.scrapers.fetcher import FetchResult
 
 logger = get_logger(__name__)
@@ -131,7 +132,7 @@ def record_failure(session: Session, tracked_url: TrackedURL, result: FetchResul
     """Record a failed fetch against the tracked URL."""
     tracked_url.last_checked = utcnow()
     tracked_url.last_status = result.error_kind or "error"
-    tracked_url.last_error = (result.error or "")[:2000]
+    tracked_url.last_error = redact_secrets((result.error or "")[:2000])
     session.flush()
     logger.warning("Fetch failed for %s: %s", tracked_url.url, result.error)
 

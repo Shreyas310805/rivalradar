@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config.logging import get_logger
+from app.redaction import redact_secrets
 from app.scrapers.url_guard import UnsafeURLError
 from app.services.competitors import DuplicateCompetitorError, NotFoundError
 
@@ -21,7 +22,10 @@ logger = get_logger(__name__)
 
 
 def _json(status_code: int, detail: str, code: str) -> JSONResponse:
-    return JSONResponse(status_code=status_code, content={"detail": detail, "code": code})
+    # Every error body passes through here, so nothing credential-shaped leaves.
+    return JSONResponse(
+        status_code=status_code, content={"detail": redact_secrets(detail), "code": code}
+    )
 
 
 def register_error_handlers(app: FastAPI) -> None:

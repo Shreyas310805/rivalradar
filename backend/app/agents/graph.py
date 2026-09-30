@@ -41,6 +41,7 @@ from app.agents.nodes import (
 )
 from app.agents.state import RivalRadarState, new_state
 from app.config.logging import get_logger
+from app.redaction import summarise_error
 
 logger = get_logger(__name__)
 
@@ -119,7 +120,9 @@ def run_pipeline(
     except Exception as exc:  # noqa: BLE001 - the graph must never crash a scan
         logger.error("Intelligence graph failed for %s", tracked_url.get("url"), exc_info=True)
         failed = dict(state)
-        failed["errors"] = [*failed.get("errors", []), f"graph: {exc}"]
+        # The graph contains the LLM call, so its failures are summarised
+        # rather than quoted; the full (redacted) traceback is in the log.
+        failed["errors"] = [*failed.get("errors", []), f"graph: {summarise_error(exc)}"]
         failed["stats"] = {
             "raw_changes": 0,
             "noise_changes": 0,

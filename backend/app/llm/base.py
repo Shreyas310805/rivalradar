@@ -18,7 +18,15 @@ logger = get_logger(__name__)
 
 
 class LLMError(RuntimeError):
-    """Raised when a provider cannot produce usable output."""
+    """Raised when a provider cannot produce usable output.
+
+    ``status_code`` carries the HTTP status when there was one, so callers can
+    record a failure as type + status without keeping the message text.
+    """
+
+    def __init__(self, message: str = "", *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 @dataclass(slots=True)

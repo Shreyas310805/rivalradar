@@ -20,6 +20,7 @@ from app.diff.types import DetectedChange, DiffStats
 from app.intelligence.classifier import classify_changes
 from app.intelligence.relevance import score_changes
 from app.models.entities import ChangeCategory
+from app.redaction import redact_secrets, summarise_error
 from app.services.wayback import (
     WaybackError,
     download_snapshot,
@@ -189,12 +190,12 @@ def evaluate_wayback_url(
         after_html = download_snapshot(newer)
     except WaybackError as exc:
         page.status = "failed"
-        page.error = str(exc)
-        logger.warning("Wayback evaluation failed for %s: %s", url, exc)
+        page.error = redact_secrets(str(exc))
+        logger.warning("Wayback evaluation failed for %s: %s", url, page.error)
         return page
     except Exception as exc:  # noqa: BLE001 - evaluation must never crash
         page.status = "failed"
-        page.error = f"unexpected error: {exc}"
+        page.error = f"unexpected error: {summarise_error(exc)}"
         logger.error("Unexpected Wayback failure for %s", url, exc_info=True)
         return page
 
@@ -202,7 +203,8 @@ def evaluate_wayback_url(
         stats, changes = evaluate_html_pair(before_html, after_html, url=url)
     except Exception as exc:  # noqa: BLE001
         page.status = "failed"
-        page.error = f"pipeline error: {exc}"
+        # The pipeline includes the LLM call: summarise, never quote.
+        page.error = f"pipeline error: {summarise_error(exc)}"
         logger.error("Pipeline failed on %s", url, exc_info=True)
         return page
 

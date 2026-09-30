@@ -137,6 +137,19 @@ class Settings(BaseSettings):
     def _coerce_path(cls, value: object) -> Path:
         return Path(str(value))
 
+    @field_validator("openrouter_api_key", "openai_api_key", mode="before")
+    @classmethod
+    def _strip_api_key(cls, value: object) -> object:
+        """Trim pasted keys; treat an empty one as unset.
+
+        Dashboards with multi-line inputs make a trailing newline easy to
+        paste. HTTP forbids control characters in headers, so a key ending in
+        "\\n" makes every request fail — and the failure message quotes the key.
+        """
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
     @model_validator(mode="after")
     def _resolve_database_url(self) -> Settings:
         """Pick the database, or refuse to start.

@@ -61,7 +61,6 @@ export interface Intelligence {
   analysed_by: string;
   /** ok | skipped | failed | rate_limited | budget */
   llm_status: string;
-  llm_error: string | null;
   llm_model: string | null;
   tracked_url_id: number | null;
   snapshot_id: number | null;

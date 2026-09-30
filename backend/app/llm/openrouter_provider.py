@@ -29,6 +29,7 @@ import httpx
 from app.config.logging import get_logger
 from app.config.settings import settings
 from app.llm.base import LLMError, LLMProvider, LLMResponse
+from app.redaction import redact_secrets
 
 logger = get_logger(__name__)
 
@@ -71,7 +72,10 @@ class OpenRouterLLMService(LLMProvider):
         timeout: float | None = None,
         max_retries: int | None = None,
     ) -> None:
-        self.api_key = api_key if api_key is not None else settings.openrouter_api_key
+        raw_key = api_key if api_key is not None else settings.openrouter_api_key
+        # Trimmed here as well as in settings: a key passed in directly must
+        # not be able to smuggle a newline into the Authorization header.
+        self.api_key = (raw_key or "").strip() or None
         self.model = model or settings.openrouter_model
         self.base_url = (base_url or settings.openrouter_base_url).rstrip("/")
         self.temperature = settings.llm_temperature if temperature is None else temperature
@@ -169,11 +173,20 @@ class OpenRouterLLMService(LLMProvider):
                 time.sleep(wait)
                 continue
             except httpx.HTTPError as exc:
+                # Never interpolate `exc` itself: httpx quotes the rejected
+                # header in the message, and the header is the API key. The
+                # type alone says what went wrong.
                 last_error = exc
                 if attempt >= self.max_retries:
-                    raise OpenRouterUnavailable(f"OpenRouter unreachable: {exc}") from exc
+                    raise OpenRouterUnavailable(
+                        f"OpenRouter unreachable ({type(exc).__name__})"
+                    ) from exc
                 wait = min(30.0, 2.0 * (2**attempt))
-                logger.warning("OpenRouter transport error (%s); retrying in %.0fs", exc, wait)
+                logger.warning(
+                    "OpenRouter transport error (%s); retrying in %.0fs",
+                    type(exc).__name__,
+                    wait,
+                )
                 time.sleep(wait)
                 continue
 
@@ -181,14 +194,16 @@ class OpenRouterLLMService(LLMProvider):
             if response.status_code in (401, 403):
                 raise LLMError(
                     "OpenRouter rejected the API key (HTTP "
-                    f"{response.status_code}). Check OPENROUTER_API_KEY in backend/.env."
+                    f"{response.status_code}). Check OPENROUTER_API_KEY in backend/.env.",
+                    status_code=response.status_code,
                 )
             if response.status_code in (400, 404):
                 detail = self._error_detail(response)
                 raise OpenRouterUnavailable(
                     f"OpenRouter rejected the request (HTTP {response.status_code}): {detail}. "
                     f"If this names the model, set OPENROUTER_MODEL to a model your account "
-                    f"can use (current: {self.model!r})."
+                    f"can use (current: {self.model!r}).",
+                    status_code=response.status_code,
                 )
 
             # --- Retryable ---------------------------------------------------
@@ -198,10 +213,12 @@ class OpenRouterLLMService(LLMProvider):
                     if response.status_code == 429:
                         raise OpenRouterRateLimited(
                             "OpenRouter rate limit reached on the free tier "
-                            f"(HTTP 429): {detail}"
+                            f"(HTTP 429): {detail}",
+                            status_code=429,
                         )
                     raise OpenRouterUnavailable(
-                        f"OpenRouter unavailable (HTTP {response.status_code}): {detail}"
+                        f"OpenRouter unavailable (HTTP {response.status_code}): {detail}",
+                        status_code=response.status_code,
                     )
                 wait = self._retry_after(response, attempt)
                 logger.warning(
@@ -217,7 +234,8 @@ class OpenRouterLLMService(LLMProvider):
             if response.status_code >= 400:
                 raise OpenRouterUnavailable(
                     f"OpenRouter returned HTTP {response.status_code}: "
-                    f"{self._error_detail(response)}"
+                    f"{self._error_detail(response)}",
+                    status_code=response.status_code,
                 )
 
             try:
@@ -229,11 +247,14 @@ class OpenRouterLLMService(LLMProvider):
                 last_error = exc
                 if attempt >= self.max_retries:
                     raise
-                logger.warning("%s; retrying (a retry re-routes the request)", exc)
+                logger.warning(
+                    "%s; retrying (a retry re-routes the request)", redact_secrets(str(exc))
+                )
                 time.sleep(1.5 * (attempt + 1))
                 continue
 
-        raise OpenRouterUnavailable(f"OpenRouter request failed: {last_error}")
+        failed_type = type(last_error).__name__ if last_error else "unknown error"
+        raise OpenRouterUnavailable(f"OpenRouter request failed ({failed_type})")
 
     # --- Response parsing --------------------------------------------------
 
@@ -331,7 +352,8 @@ class OpenRouterLLMService(LLMProvider):
                 max_tokens=32,
             )
         except LLMError as exc:
-            return {"ok": False, "reason": str(exc), "model": self.model}
+            # Printed by `rivalradar llm-check`, so it goes through redaction.
+            return {"ok": False, "reason": redact_secrets(str(exc)), "model": self.model}
         try:
             parsed = json.loads(result.text.strip().strip("`"))
         except ValueError:

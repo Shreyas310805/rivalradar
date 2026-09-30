@@ -179,11 +179,6 @@ function ChangeDetailPageContent() {
                 This write-up was produced by the deterministic rules, not a language
                 model. Detection, classification and scoring are unaffected.
               </p>
-              {intel.llm_error && (
-                <p className="mono mt-2 break-words text-[11px] text-[var(--ink-faint)]">
-                  {intel.llm_error}
-                </p>
-              )}
             </section>
           )}
 

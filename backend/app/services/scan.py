@@ -18,6 +18,7 @@ from app.database.base import utcnow
 from app.database.demo_pages import demo_html_for
 from app.diff.types import DiffStats
 from app.models.entities import Change, Competitor, Intelligence, ScanRun, Severity, TrackedURL
+from app.redaction import redact_secrets, summarise_error
 from app.scrapers.fetcher import FetchResult, fetch_html_string, fetch_url
 from app.services import snapshots as snapshot_service
 
@@ -118,7 +119,7 @@ def _persist_changes(
             confidence=float(item.get("confidence", 0.5)),
             analysed_by=item.get("analysed_by", "deterministic"),
             llm_status=item.get("llm_status", "skipped"),
-            llm_error=(item.get("llm_error") or None),
+            llm_error=redact_secrets(item.get("llm_error")) or None,
             llm_model=item.get("llm_model"),
             # Traceability: point back at the exact evidence.
             tracked_url_id=tracked_url_id,
@@ -261,10 +262,13 @@ def scan_competitor(
         except Exception as exc:  # noqa: BLE001 - one bad page must not stop the scan
             logger.error("Scan failed for %s", tracked_url.url, exc_info=True)
             session.rollback()
+            # scan_tracked_url includes the LLM call: summarise, never quote.
             url_outcome = URLScanOutcome(
-                url=tracked_url.url, status="failed", message=f"unexpected error: {exc}"
+                url=tracked_url.url,
+                status="failed",
+                message=f"unexpected error: {summarise_error(exc)}",
             )
-            outcome.errors.append(f"{tracked_url.url}: {exc}")
+            outcome.errors.append(f"{tracked_url.url}: {summarise_error(exc)}")
 
         outcome.results.append(url_outcome)
         outcome.intelligence_ids.extend(url_outcome.intelligence_ids)
@@ -293,7 +297,7 @@ def scan_competitor(
         run.meaningful_changes = total.meaningful_changes
         run.high_impact_changes = total.high_impact_changes
         run.noise_reduction = total.noise_reduction
-        run.error = "; ".join(outcome.errors)[:2000] or None
+        run.error = redact_secrets("; ".join(outcome.errors)[:2000]) or None
 
     outcome.status = status
 
@@ -329,7 +333,7 @@ def scan_all(session: Session, *, llm_enabled: bool = True) -> list[ScanOutcome]
                     competitor_id=competitor.id,
                     competitor_name=competitor.name,
                     status="failed",
-                    errors=[str(exc)],
+                    errors=[summarise_error(exc)],
                 )
             )
     return outcomes

@@ -21,6 +21,7 @@ from app.llm.base import LLMError, LLMProvider
 from app.llm.factory import get_provider
 from app.llm.heuristic_provider import HeuristicProvider
 from app.models.entities import Change, Competitor, Digest, Intelligence
+from app.redaction import redact_secrets
 from app.schemas.llm import DigestNarrative
 
 logger = get_logger(__name__)
@@ -140,7 +141,10 @@ def _generate_narrative(
         )
         return DigestNarrative.model_validate(payload), provider.name
     except (LLMError, ValidationError, ValueError, TypeError, KeyError) as exc:
-        logger.warning("Digest LLM generation failed (%s); using heuristic fallback", exc)
+        logger.warning(
+            "Digest LLM generation failed (%s); using heuristic fallback",
+            redact_secrets(str(exc)),
+        )
     except Exception:  # noqa: BLE001
         logger.error("Unexpected digest LLM failure; using heuristic fallback", exc_info=True)
 

@@ -34,6 +34,7 @@ from app.llm.factory import get_provider
 from app.llm.heuristic_provider import HeuristicProvider
 from app.llm.openrouter_provider import OpenRouterRateLimited
 from app.models.entities import Severity
+from app.redaction import redact_secrets, summarise_error
 from app.schemas.llm import ChangeAnalysis
 
 logger = get_logger(__name__)
@@ -180,20 +181,25 @@ def analyse_change(
         analysis = ChangeAnalysis.model_validate(payload)
         return _finalise(change, analysis, provider.name, STATUS_OK, None)
 
+    # What is *stored* is summarise_error(): type and status only. The message
+    # text can quote request headers, i.e. the API key, and it ends up in the
+    # database. The fuller (redacted) message goes to the server log only.
     except OpenRouterRateLimited as exc:
-        logger.warning("LLM rate limited; using deterministic analysis: %s", exc)
-        status, error = STATUS_RATE_LIMITED, str(exc)
+        logger.warning(
+            "LLM rate limited; using deterministic analysis: %s", redact_secrets(str(exc))
+        )
+        status, error = STATUS_RATE_LIMITED, summarise_error(exc)
     except (LLMError, ValidationError, ValueError, KeyError, TypeError) as exc:
         logger.warning(
             "LLM analysis failed for %s change (%s); using deterministic analysis: %s",
             change.category,
             competitor_name,
-            exc,
+            redact_secrets(str(exc)),
         )
-        status, error = STATUS_FAILED, str(exc)
+        status, error = STATUS_FAILED, summarise_error(exc)
     except Exception as exc:  # noqa: BLE001 - never let a scan die here
         logger.error("Unexpected LLM failure; using deterministic analysis", exc_info=True)
-        status, error = STATUS_FAILED, str(exc)
+        status, error = STATUS_FAILED, summarise_error(exc)
 
     analysis = _deterministic_analysis(context, change, competitor_name)
     return _finalise(change, analysis, "deterministic", status, error)
@@ -220,7 +226,8 @@ def _finalise(
         analysis=analysis,
         analysed_by=analysed_by,
         llm_status=status,
-        llm_error=(error or None),
+        # Already a summary; redacted again as a last line of defence.
+        llm_error=redact_secrets(error) or None,
     )
 
 

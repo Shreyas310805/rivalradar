@@ -8,6 +8,7 @@ from typing import Any
 from app.config.logging import get_logger
 from app.config.settings import settings
 from app.llm.base import LLMError, LLMProvider, LLMResponse
+from app.redaction import redact_secrets
 
 logger = get_logger(__name__)
 
@@ -32,7 +33,8 @@ class OpenAIProvider(LLMProvider):
         timeout: float | None = None,
         max_retries: int | None = None,
     ) -> None:
-        self.api_key = api_key or settings.openai_api_key
+        # Trimmed so a pasted newline cannot end up in the Authorization header.
+        self.api_key = (api_key or settings.openai_api_key or "").strip() or None
         self.model = model or settings.openai_model
         self.base_url = base_url or settings.openai_base_url
         self.temperature = settings.llm_temperature if temperature is None else temperature
@@ -111,9 +113,14 @@ class OpenAIProvider(LLMProvider):
                     "OpenAI call failed (attempt %d/%d): %s; retrying in %.1fs",
                     attempt + 1,
                     self.max_retries + 1,
-                    exc,
+                    redact_secrets(str(exc)),
                     backoff,
                 )
                 time.sleep(backoff)
 
-        raise LLMError(f"OpenAI request failed after {self.max_retries + 1} attempts: {last_error}")
+        # The type only: SDK error messages can echo request details.
+        raise LLMError(
+            f"OpenAI request failed after {self.max_retries + 1} attempts "
+            f"({type(last_error).__name__})",
+            status_code=getattr(last_error, "status_code", None),
+        ) from last_error

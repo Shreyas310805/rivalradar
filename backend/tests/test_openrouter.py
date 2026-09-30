@@ -110,6 +110,57 @@ class TestConfiguration:
         assert headers["X-Title"] == "RivalRadar"
 
 
+class TestKeyHygiene:
+    """Regression tests for the leaked-key incident (see tests/test_redaction.py)."""
+
+    FAKE_KEY = "sk-" + "or-v1-" + "0123456789abcdef" * 4
+
+    def _illegal_header(self) -> httpx.LocalProtocolError:
+        # Exactly how httpx/h11 rejected the key that ended in a newline.
+        return httpx.LocalProtocolError(f"Illegal header value b'Bearer {self.FAKE_KEY}\\n'")
+
+    def test_pasted_newline_is_stripped_from_the_key(self):
+        service = OpenRouterLLMService(api_key=f"  {self.FAKE_KEY}\n")
+        assert service.api_key == self.FAKE_KEY
+        assert service._headers()["Authorization"] == f"Bearer {self.FAKE_KEY}"
+
+    def test_transport_error_never_quotes_the_header(self, monkeypatch):
+        monkeypatch.setattr("app.llm.openrouter_provider.time.sleep", lambda _s: None)
+        _patch_post(monkeypatch, self._illegal_header(), self._illegal_header())
+        with pytest.raises(OpenRouterUnavailable) as info:
+            OpenRouterLLMService(api_key="k", max_retries=1).complete(system="s", user="u")
+        assert "sk-or" not in str(info.value)
+        assert "LocalProtocolError" in str(info.value), "the cause must stay diagnosable"
+
+    def test_analyzer_stores_a_summary_not_the_message(self, monkeypatch):
+        monkeypatch.setattr("app.llm.openrouter_provider.time.sleep", lambda _s: None)
+        _patch_post(monkeypatch, self._illegal_header(), self._illegal_header())
+        change = DetectedChange(
+            before="Rs 999/month",
+            after="Rs 1499/month",
+            category="pricing",
+            relevance_score=90.0,
+            classifier_confidence=0.9,
+            magnitude=0.5,
+        )
+        result = analyse_change(
+            change, "Acme", provider=OpenRouterLLMService(api_key="k", max_retries=1)
+        )
+        assert result.llm_status == STATUS_FAILED
+        assert result.llm_error == "OpenRouterUnavailable (cause: LocalProtocolError)"
+
+    def test_http_error_summary_carries_the_status(self, monkeypatch):
+        monkeypatch.setattr("app.llm.openrouter_provider.time.sleep", lambda _s: None)
+        _patch_post(monkeypatch, *[_response(503, {"error": {"message": "down"}})] * 2)
+        change = DetectedChange(
+            before="a", after="b", category="pricing", relevance_score=90.0, magnitude=0.5
+        )
+        result = analyse_change(
+            change, "Acme", provider=OpenRouterLLMService(api_key="k", max_retries=1)
+        )
+        assert result.llm_error == "OpenRouterUnavailable (HTTP 503)"
+
+
 class TestSuccessfulCompletion:
     def test_parses_a_completion(self, monkeypatch):
         _patch_post(monkeypatch, _response(200, _completion(ANALYSIS)))
